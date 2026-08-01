@@ -90,10 +90,10 @@ the password on each write):
 
 ## Disclaimer
 
-This tool gives you direct control over your hardware. Issues caused by **how you
-use it** (for example running the fan at low speed for long periods, which can lead
-to overheating) are not the responsibility of the authors. Always keep the **AUTO**
-mode or a sane target when in doubt.
+Using this tool is entirely **your decision**. It writes directly to the SMC and
+bypasses macOS fan management. If it breaks your hardware, your software, your
+warranty, your day, or your trust in humanity — that's on you, not on us. Don't
+hold a low fan speed forever, and don't come complaining.
 
 ## License
 
