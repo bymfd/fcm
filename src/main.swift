@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             btn.image = nil
             return
         }
-        let name = displayMode == "temp" ? "thermometer" : "fan.fill"
+        let name = displayMode == "temp" ? "thermometer" : "speedometer"
         if let img = NSImage(systemSymbolName: name, accessibilityDescription: "Fan") {
             img.isTemplate = true
             btn.imagePosition = .imageLeading
