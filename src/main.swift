@@ -14,16 +14,10 @@ let RAM_KEYS = ["TM0P", "TM0p", "PM0P"]
 let SSD_KEYS = ["Ts0P", "Th0P", "NS0P", "PF0P"]
 let WIFI_KEYS = ["TW0P", "TP0P", "En0P"]
 
-func readTemp(_ keys: [String]) -> Double? {
-    for k in keys {
-        if let v = readKey(k), let d = Double(v), d > -100 { return d }
-    }
-    return nil
-}
-func cpuTemp() -> Double { readTemp(CPU_KEYS) ?? 40 }
-func fmtTemp(_ v: Double?) -> String { v.map { String(format: "%.0f°C", $0) } ?? "—" }
+let DEBUG_LOG = CommandLine.arguments.contains("--debug")
 
 func log(_ msg: String) {
+    guard DEBUG_LOG else { return }
     let line = "[\(Date())] \(msg)\n"
     if let h = FileHandle(forWritingAtPath: LOG_PATH) {
         h.seekToEndOfFile()
@@ -34,7 +28,14 @@ func log(_ msg: String) {
     }
 }
 
-var logCounter = 0
+func readTemp(_ keys: [String]) -> Double? {
+    for k in keys {
+        if let v = readKey(k), let d = Double(v), d > -100 { return d }
+    }
+    return nil
+}
+func cpuTemp() -> Double { readTemp(CPU_KEYS) ?? 40 }
+func fmtTemp(_ v: Double?) -> String { v.map { String(format: "%.0f°C", $0) } ?? "—" }
 
 func smcRun(_ args: [String]) -> String? {
     let cmd = [SMC_PATH] + args
@@ -54,10 +55,7 @@ func smcRun(_ args: [String]) -> String? {
     if p.terminationStatus != 0 {
         log("\(args.joined(separator: " ")) → rc=\(p.terminationStatus) err=\(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
     } else {
-        logCounter += 1
-        if logCounter % 30 == 0 {
-            log("tick \(logCounter): \(args.joined(separator: " "))")
-        }
+        log("\(args.joined(separator: " ")) → \(outStr.trimmingCharacters(in: .whitespacesAndNewlines))")
     }
     guard p.terminationStatus == 0 else { return nil }
     return outStr
