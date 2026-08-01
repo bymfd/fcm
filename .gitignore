@@ -1,0 +1,5 @@
+.DS_Store
+FCM.app/
+build-smc
+*.icns
+*.log
