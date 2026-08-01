@@ -88,6 +88,13 @@ the password on each write):
   doesn't expose show as `—`
 - Reboot resets the SMC to the system defaults
 
+## Disclaimer
+
+This tool gives you direct control over your hardware. Issues caused by **how you
+use it** (for example running the fan at low speed for long periods, which can lead
+to overheating) are not the responsibility of the authors. Always keep the **AUTO**
+mode or a sane target when in doubt.
+
 ## License
 
 [MIT](LICENSE)
