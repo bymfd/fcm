@@ -288,7 +288,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         viewItem.submenu = vm
         m.addItem(viewItem)
         m.addItem(NSMenuItem.separator())
+        let aboutItem = NSMenuItem(title: "About FCM", action: #selector(openRepo), keyEquivalent: "")
+        aboutItem.target = self
+        m.addItem(aboutItem)
+        m.addItem(NSMenuItem.separator())
         m.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
+    }
+
+    @objc func openRepo() {
+        if let url = URL(string: "https://github.com/bymfd/fcm") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc func setIconMode(_ sender: NSMenuItem) {
