@@ -6,8 +6,6 @@ It shows live fan RPM and temperatures in the menu bar, lets you force **MAX / M
 a fixed speed**, or run a **temperature-based auto curve** — useful when macOS keeps
 the fan too low and the machine shuts down under load.
 
-![icon](assets/mfc.png)
-
 ![menu bar screenshot](assets/sample.png)
 
 ## Features
