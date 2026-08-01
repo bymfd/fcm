@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FCM — Fan Control Menu</title>
+<style>
+  :root {
+    --bg1: #0b1023;
+    --bg2: #141b3d;
+    --accent: #4f8cff;
+    --accent2: #38d6a0;
+    --text: #e8ecff;
+    --muted: #9aa4c8;
+    --card: rgba(255,255,255,.04);
+    --border: rgba(255,255,255,.09);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1b2a5e 0%, var(--bg1) 55%), var(--bg1);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .wrap { max-width: 860px; width: 100%; padding: 64px 24px 48px; text-align:center; }
+  .logo {
+    width: 112px; height: 112px; border-radius: 26px;
+    box-shadow: 0 0 0 6px rgba(79,140,255,.15), 0 24px 60px rgba(0,0,0,.5);
+    margin: 0 auto 28px;
+  }
+  h1 {
+    font-size: 46px; font-weight: 800; letter-spacing: -.5px;
+    background: linear-gradient(100deg, #fff 20%, var(--accent) 60%, var(--accent2) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tag { color: var(--muted); font-size: 18px; margin: 12px 0 8px; }
+  .badges { margin: 20px 0 34px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .badge {
+    font-size: 13px; padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+  }
+  .badge b { color: var(--accent2); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 17px; font-weight: 700; color: #0b1023;
+    background: linear-gradient(100deg, var(--accent), var(--accent2));
+    padding: 14px 32px; border-radius: 14px; text-decoration: none;
+    box-shadow: 0 14px 40px rgba(79,140,255,.35);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 18px 50px rgba(56,214,160,.4); }
+  .btn small { font-weight: 500; opacity: .75; }
+  .shot {
+    margin: 48px auto 0; border-radius: 18px; max-width: 460px; width: 100%;
+    border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,.55);
+  }
+  .grid {
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap:16px; margin-top: 56px; text-align:left;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 22px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 8px; }
+  .card p { font-size: 14px; color: var(--muted); line-height: 1.55; }
+  .card .ic { font-size: 22px; margin-bottom: 12px; }
+  footer { margin: 64px 0 32px; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 480px) { h1 { font-size: 34px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" src="../assets/mfc.png" alt="FCM icon">
+  <h1>FCM</h1>
+  <p class="tag">Fan Control Menu — take your Mac's fan back.</p>
+
+  <div class="badges">
+    <span class="badge"><b>Universal</b> Intel &amp; Apple Silicon</span>
+    <span class="badge"><b>No terminal</b> one-time password</span>
+    <span class="badge"><b>AUTO</b> temperature curve</span>
+    <span class="badge"><b>MIT</b> license</span>
+  </div>
+
+  <a class="btn" href="https://github.com/bymfd/fcm/releases/latest/download/FCM.app.zip">
+    ⬇ Download FCM.app
+    <small>v1.0 · Universal</small>
+  </a>
+
+  <img class="shot" src="../assets/sample.png" alt="FCM menu bar screenshot">
+
+  <div class="grid">
+    <div class="card">
+      <div class="ic">🌀</div>
+      <h3>Full fan control</h3>
+      <p>MAX, MIN, a fixed speed, or system AUTO — from the menu bar, whenever you want.</p>
+    </div>
+    <div class="card">
+      <div class="ic">🌡️</div>
+      <h3>Temperature curve</h3>
+      <p>AUTO uses its own 50–88°C curve because some Macs never spin the fan up on their own.</p>
+    </div>
+    <div class="card">
+      <div class="ic">🛡️</div>
+      <h3>Watchdog</h3>
+      <p>The target speed is re-asserted every 1.5s, so the system can't silently override you.</p>
+    </div>
+    <div class="card">
+      <div class="ic">👀</div>
+      <h3>Clean menu bar</h3>
+      <p>Live rpm · °C. Choose rpm only, temperature only, or hide the icon entirely.</p>
+    </div>
+  </div>
+
+  <footer>
+    <a href="https://github.com/bymfd/fcm">github.com/bymfd/fcm</a> · FCM — Fan Control Menu
+  </footer>
+</div>
+</body>
+</html>
