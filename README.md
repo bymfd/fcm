@@ -26,7 +26,7 @@ the fan too low and the machine shuts down under load.
 
 ## Install (no terminal needed)
 
-1. Download `FCM.app` from [Releases](../../releases) (or copy it from `build/`)
+1. Download `FCM.app` from [Releases](../../releases) (or build it yourself with `./build.sh`)
 2. Move it to `/Applications`
 3. Launch it (Finder, Launchpad, or Spotlight)
 4. Enter your password **once** — it installs the `com.fcm.helper` launch daemon
