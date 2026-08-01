@@ -34,6 +34,8 @@ func log(_ msg: String) {
     }
 }
 
+var logCounter = 0
+
 func smcRun(_ args: [String]) -> String? {
     let cmd = [SMC_PATH] + args
     let p = Process()
@@ -49,18 +51,51 @@ func smcRun(_ args: [String]) -> String? {
     let errData = err.fileHandleForReading.readDataToEndOfFile()
     let outStr = String(data: data, encoding: .utf8) ?? ""
     let errStr = String(data: errData, encoding: .utf8) ?? ""
-    log("\(args.joined(separator: " ")) → rc=\(p.terminationStatus) out=\(outStr.trimmingCharacters(in: .whitespacesAndNewlines)) err=\(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
-    guard p.terminationStatus == 0 else { return nil }
-    guard let s = String(data: data, encoding: .utf8) else { return nil }
-    for line in s.split(separator: "\n") {
-        if let eq = line.firstIndex(of: "=") {
-            return String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    if p.terminationStatus != 0 {
+        log("\(args.joined(separator: " ")) → rc=\(p.terminationStatus) err=\(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
+    } else {
+        logCounter += 1
+        if logCounter % 30 == 0 {
+            log("tick \(logCounter): \(args.joined(separator: " "))")
         }
     }
-    return nil
+    guard p.terminationStatus == 0 else { return nil }
+    return outStr
 }
 
-func readKey(_ k: String) -> String? { smcRun(["read", k]) }
+func parseValues(_ out: String) -> [String: String] {
+    var d: [String: String] = [:]
+    for line in out.split(separator: "\n") {
+        if let eq = line.firstIndex(of: "=") {
+            d[String(line[..<eq])] = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    return d
+}
+
+func smcValues(_ args: [String]) -> [String: String] {
+    guard let out = smcRun(args) else { return [:] }
+    return parseValues(out)
+}
+
+var readCache: [String: String] = [:]
+var cacheStamp = Date.distantPast
+
+func batchRead() {
+    var keys = ["FNum", "F0Ac", "F0Mn", "F0Mx", "F0Tg"]
+    for i in 1..<4 { keys.append("F\(i)Ac") }
+    keys += CPU_KEYS + RAM_KEYS + SSD_KEYS + WIFI_KEYS
+    readCache = smcValues(["read"] + keys)
+    cacheStamp = Date()
+}
+
+func readKey(_ k: String) -> String? {
+    if cacheStamp.timeIntervalSinceNow > -4 {
+        return readCache[k]
+    }
+    return smcValues(["read", k])[k]
+}
+
 func sendWrite(_ k: String, _ v: String) {
     if let fh = FileHandle(forWritingAtPath: FIFO_PATH) {
         fh.write("\(k) \(v)\n".data(using: .utf8)!)
@@ -113,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var fans: [Int] = []
     var timer: Timer?
+    var statusTimer: Timer?
     var smcOk = false
     var lastAction = "auto"
     var manualTarget: Int? = nil
@@ -125,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = ensureDaemon()
+        batchRead()
         fans = detectFans()
         smcOk = fans.first != nil && readKey("F0Ac") != nil
         if !smcOk {
@@ -143,9 +180,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
             self.assertFan()
-            self.refreshStatus()
         }
         RunLoop.main.add(timer!, forMode: .common)
+
+        statusTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { _ in
+            batchRead()
+            self.refreshStatus()
+        }
+        RunLoop.main.add(statusTimer!, forMode: .common)
     }
 
     func showAlert(_ title: String, _ message: String) {
@@ -200,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        batchRead()
         rebuildMenu()
         refreshStatus()
     }

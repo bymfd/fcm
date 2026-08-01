@@ -209,19 +209,24 @@ static int connect_smc(void) {
     return r == kIOReturnSuccess ? 0 : -1;
 }
 
-static int cmd_read(const char *key) {
-    SMCKeyData_keyInfo_t info;
-    if (smc_read_info(key, &info) != kIOReturnSuccess) {
-        fprintf(stderr, "smc: anahtar okunamadı: %s\n", key);
-        return 1;
+static int cmd_read(int argc, char **argv) {
+    int ok = 0;
+    for (int i = 2; i < argc; i++) {
+        const char *key = argv[i];
+        SMCKeyData_keyInfo_t info;
+        if (smc_read_info(key, &info) != kIOReturnSuccess) {
+            fprintf(stderr, "smc: anahtar okunamadı: %s\n", key);
+            continue;
+        }
+        SMCBytes_t data;
+        if (smc_read_data(key, data, info.dataSize) != kIOReturnSuccess) {
+            fprintf(stderr, "smc: veri okunamadı: %s\n", key);
+            continue;
+        }
+        printf("%s=%g\n", key, decode_value(info.dataType, data, info.dataSize));
+        ok = 1;
     }
-    SMCBytes_t data;
-    if (smc_read_data(key, data, info.dataSize) != kIOReturnSuccess) {
-        fprintf(stderr, "smc: veri okunamadı: %s\n", key);
-        return 1;
-    }
-    printf("%s=%g\n", key, decode_value(info.dataType, data, info.dataSize));
-    return 0;
+    return ok ? 0 : 1;
 }
 
 static int cmd_write(const char *key, const char *val) {
@@ -314,8 +319,8 @@ int main(int argc, char **argv) {
     const char *cmd = argv[1];
     if (strcmp(cmd, "list") == 0)
         return cmd_list();
-    if (strcmp(cmd, "read") == 0 && argc == 3)
-        return cmd_read(argv[2]);
+    if (strcmp(cmd, "read") == 0 && argc >= 3)
+        return cmd_read(argc, argv);
     if (strcmp(cmd, "dump") == 0 && argc == 3)
         return cmd_dump(argv[2]);
     if (strcmp(cmd, "write") == 0 && argc == 4)
