@@ -8,6 +8,8 @@ the fan too low and the machine shuts down under load.
 
 ![icon](assets/mfc.png)
 
+![menu bar screenshot](assets/sample.png)
+
 ## Features
 
 - Menu bar status: `rpm · °C` (choose **rpm only**, **temperature only**, or hide the icon)
