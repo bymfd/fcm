@@ -14,6 +14,9 @@ the fan too low and the machine shuts down under load.
 - **MAX / MIN / AUTO** modes and a **Set Speed** submenu
 - **AUTO** uses its own temperature curve (50–88 °C → min–max) because some models
   never spin the fan up themselves
+- **Settings** menu: pick the temperature unit (**°C / °F / K**), which sensor shows
+  in the menu bar, which sensor drives the AUTO curve, and which sensors appear in
+  the menu (every temperature sensor the machine exposes is listed)
 - Watchdog keeps the target speed enforced every 1.5 s
 - Works on **Intel and Apple Silicon** (Universal binaries)
 - Self-installing privileged helper: asks for your password **once**, then runs
@@ -84,8 +87,8 @@ the password on each write):
 
 - Fan speed values (min/max/curve) are read from the SMC at runtime — no hardcoded
   machine-specific limits
-- Temperature sensors are probed with fallback keys per model; sensors the machine
-  doesn't expose show as `—`
+- All temperature sensors the machine exposes are discovered automatically; the
+  default menu shows CPU · Memory · Storage · Wireless (change it under **Settings**)
 - Reboot resets the SMC to the system defaults
 
 ## Disclaimer

@@ -9,12 +9,85 @@ let SMC_PATH: String = {
 let FIFO_PATH = "/var/run/fcm.fifo"
 let LOG_PATH = "/tmp/fanctl.log"
 
-let CPU_KEYS = ["TC0P", "TC0c", "Tp09", "pacc"]
-let RAM_KEYS = ["TM0P", "TM0p", "PM0P"]
-let SSD_KEYS = ["Ts0P", "Th0P", "NS0P", "PF0P"]
-let WIFI_KEYS = ["TW0P", "TP0P", "En0P"]
-
 let DEBUG_LOG = CommandLine.arguments.contains("--debug")
+
+struct Sensor {
+    let key: String
+    let label: String
+    let family: String
+}
+
+var allSensors: [Sensor] = []
+
+func sensorFamily(_ key: String) -> String {
+    if key.hasPrefix("TC") || key.hasPrefix("Tp") || key.hasPrefix("Tn") { return "cpu" }
+    if key.hasPrefix("TG") { return "gpu" }
+    if key.hasPrefix("TM") || key.hasPrefix("Tm") { return "ram" }
+    if key.hasPrefix("TS") || key.hasPrefix("Ts") { return "ssd" }
+    if key.hasPrefix("TW") || key.hasPrefix("TP") { return "wifi" }
+    if key.hasPrefix("TB") || key.hasPrefix("Tb") { return "battery" }
+    if key.hasPrefix("TA") || key.hasPrefix("Ta") { return "ambient" }
+    return "other"
+}
+
+func familyName(_ fam: String) -> String? {
+    switch fam {
+    case "cpu": return "CPU"
+    case "gpu": return "GPU"
+    case "ram": return "Memory"
+    case "ssd": return "Storage"
+    case "wifi": return "Wireless"
+    case "battery": return "Battery"
+    case "ambient": return "Ambient"
+    default: return nil
+    }
+}
+
+func familyIcon(_ fam: String) -> String {
+    switch fam {
+    case "cpu": return "cpu"
+    case "ram": return "memorychip"
+    case "ssd": return "internaldrive"
+    case "wifi": return "wifi"
+    case "battery": return "battery.100percent"
+    case "ambient": return "thermometer"
+    default: return "thermometer"
+    }
+}
+
+func sensorLabel(_ key: String) -> String {
+    let known = ["TC0P": "CPU", "TC0E": "CPU Die 1", "TC0F": "CPU Die 2",
+                 "TM0P": "Memory", "Ts0P": "Storage", "TW0P": "Wireless",
+                 "Ta0P": "Ambient", "TB0T": "Battery", "TG0P": "GPU", "TG0D": "GPU Diode"]
+    if let l = known[key] { return l }
+    if let n = familyName(sensorFamily(key)) { return "\(n) \(key)" }
+    return key
+}
+
+func discoverSensors() {
+    guard let out = smcRun(["temps"]) else { return }
+    var keys: [String] = []
+    for line in out.split(separator: "\n") {
+        if let eq = line.firstIndex(of: "=") {
+            let k = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+            if !k.isEmpty { keys.append(k) }
+        }
+    }
+    let prio: [String: Int] = ["cpu": 0, "ram": 1, "ssd": 2, "wifi": 3,
+                               "gpu": 4, "battery": 5, "ambient": 6, "other": 7]
+    keys.sort {
+        let a = sensorFamily($0), b = sensorFamily($1)
+        if prio[a] != prio[b] { return prio[a]! < prio[b]! }
+        return $0 < $1
+    }
+    allSensors = keys.map { Sensor(key: $0, label: sensorLabel($0), family: sensorFamily($0)) }
+    log("sensors: \(allSensors.map { $0.key }.joined(separator: " "))")
+}
+
+var tempUnit = UserDefaults.standard.string(forKey: "tempUnit") ?? "c"
+var watchSensor = UserDefaults.standard.string(forKey: "watchSensor") ?? ""
+var curveSensor = UserDefaults.standard.string(forKey: "curveSensor") ?? ""
+var menuSensors: [String] = UserDefaults.standard.stringArray(forKey: "menuSensors") ?? []
 
 func log(_ msg: String) {
     guard DEBUG_LOG else { return }
@@ -28,14 +101,14 @@ func log(_ msg: String) {
     }
 }
 
-func readTemp(_ keys: [String]) -> Double? {
-    for k in keys {
-        if let v = readKey(k), let d = Double(v), d > -100 { return d }
+func fmtTemp(_ v: Double?, _ unit: String) -> String {
+    guard let v = v else { return "—" }
+    switch unit {
+    case "f": return String(format: "%.0f°F", v * 9 / 5 + 32)
+    case "k": return String(format: "%.0fK", v + 273.15)
+    default: return String(format: "%.0f°C", v)
     }
-    return nil
 }
-func cpuTemp() -> Double { readTemp(CPU_KEYS) ?? 40 }
-func fmtTemp(_ v: Double?) -> String { v.map { String(format: "%.0f°C", $0) } ?? "—" }
 
 func smcRun(_ args: [String]) -> String? {
     let cmd = [SMC_PATH] + args
@@ -82,7 +155,7 @@ var cacheStamp = Date.distantPast
 func batchRead() {
     var keys = ["FNum", "F0Ac", "F0Mn", "F0Mx", "F0Tg"]
     for i in 1..<4 { keys.append("F\(i)Ac") }
-    keys += CPU_KEYS + RAM_KEYS + SSD_KEYS + WIFI_KEYS
+    keys += allSensors.map { $0.key }
     readCache = smcValues(["read"] + keys)
     cacheStamp = Date()
 }
@@ -159,6 +232,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = ensureDaemon()
+        discoverSensors()
+        if allSensors.isEmpty {
+            showAlert("No temperature sensors found", "The SMC reported no temperature sensors.")
+        } else {
+            if watchSensor.isEmpty || !allSensors.contains(where: { $0.key == watchSensor }) {
+                watchSensor = allSensors.first(where: { $0.key == "TC0P" })?.key
+                    ?? allSensors.first(where: { $0.family == "cpu" })?.key
+                    ?? allSensors.first!.key
+                UserDefaults.standard.set(watchSensor, forKey: "watchSensor")
+            }
+            if curveSensor.isEmpty || !allSensors.contains(where: { $0.key == curveSensor }) {
+                curveSensor = watchSensor
+                UserDefaults.standard.set(curveSensor, forKey: "curveSensor")
+            }
+            if menuSensors.isEmpty {
+                var def: [String] = []
+                for p in ["TC0P", "TM0P", "Ts0P", "TW0P"] where allSensors.contains(where: { $0.key == p }) {
+                    def.append(p)
+                }
+                if def.isEmpty { def = allSensors.map { $0.key } }
+                menuSensors = def
+                UserDefaults.standard.set(def, forKey: "menuSensors")
+            }
+        }
         batchRead()
         fans = detectFans()
         smcOk = fans.first != nil && readKey("F0Ac") != nil
@@ -202,7 +299,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let t = manualTarget {
             target = t
         } else if lastAction == "auto" {
-            target = fanCurve(cpuTemp())
+            let c = readKey(curveSensor).flatMap { Double($0) } ?? 40
+            target = fanCurve(c)
         } else {
             return
         }
@@ -219,7 +317,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             btn.image = nil
             return
         }
-        let name = displayMode == "temp" ? "thermometer" : "speedometer"
+        let name: String
+        if displayMode == "rpm" {
+            name = "speedometer"
+        } else {
+            let fam = allSensors.first(where: { $0.key == watchSensor })?.family ?? "other"
+            name = familyIcon(fam)
+        }
         if let img = NSImage(systemSymbolName: name, accessibilityDescription: "Fan") {
             img.isTemplate = true
             btn.imagePosition = .imageLeading
@@ -230,14 +334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func refreshStatus() {
         guard let btn = statusItem?.button else { return }
         let ac = Double(readKey("F0Ac") ?? "0") ?? 0
-        let cpu = readTemp(CPU_KEYS) ?? 0
+        let t = readKey(watchSensor).flatMap { Double($0) }
         var text = ""
         switch displayMode {
-        case "temp": text = String(format: " %.0f°C", cpu)
+        case "temp": text = " " + fmtTemp(t, tempUnit)
         case "rpm": text = String(format: " %.0f rpm", ac)
-        default: text = String(format: " %.0f rpm · %.0f°C", ac, cpu)
+        default: text = String(format: " %.0f rpm · %@", ac, fmtTemp(t, tempUnit))
         }
         btn.title = iconMode == "icon" ? "" : text
+        log("status text: \(text)")
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -266,15 +371,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             m.addItem(mod)
             m.addItem(NSMenuItem(title: "min \(mn)  ·  max \(mxStr)  ·  target \(tg) rpm", action: nil, keyEquivalent: ""))
             m.addItem(NSMenuItem(title: "Active: \(self.lastAction.uppercased())", action: nil, keyEquivalent: ""))
-
-            let cpu = readTemp(CPU_KEYS)
-            let ram = readTemp(RAM_KEYS)
-            let ssd = readTemp(SSD_KEYS)
-            let wlan = readTemp(WIFI_KEYS)
-            let tItem = NSMenuItem(title: "CPU \(fmtTemp(cpu)) · RAM \(fmtTemp(ram)) · SSD \(fmtTemp(ssd)) · WiFi \(fmtTemp(wlan))",
-                                   action: nil, keyEquivalent: "")
-            tItem.isEnabled = false
-            m.addItem(tItem)
 
             m.addItem(NSMenuItem.separator())
 
@@ -310,6 +406,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             m.addItem(NSMenuItem.separator())
         }
+        if !menuSensors.isEmpty {
+            let parts = menuSensors.compactMap { k -> String? in
+                let v = readKey(k).flatMap { Double($0) }
+                let lbl = allSensors.first(where: { $0.key == k })?.label ?? k
+                return "\(lbl) \(fmtTemp(v, tempUnit))"
+            }
+            if !parts.isEmpty {
+                let tItem = NSMenuItem(title: parts.joined(separator: " · "), action: nil, keyEquivalent: "")
+                tItem.isEnabled = false
+                m.addItem(tItem)
+                m.addItem(NSMenuItem.separator())
+            }
+        }
         let viewItem = NSMenuItem(title: "Display", action: nil, keyEquivalent: "")
         let vm = NSMenu()
         for (label, key) in [("rpm · °C", "both"), ("rpm only", "rpm"), ("temperature only", "temp")] {
@@ -329,6 +438,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         viewItem.submenu = vm
         m.addItem(viewItem)
+
+        let settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let stm = NSMenu()
+
+        let unitsItem = NSMenuItem(title: "Units", action: nil, keyEquivalent: "")
+        let um = NSMenu()
+        for (label, u) in [("°C", "c"), ("°F", "f"), ("K", "k")] {
+            let it = NSMenuItem(title: label, action: #selector(setUnit(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = u
+            if tempUnit == u { it.state = .on }
+            um.addItem(it)
+        }
+        unitsItem.submenu = um
+        stm.addItem(unitsItem)
+
+        let watchItem = NSMenuItem(title: "Watch in status bar", action: nil, keyEquivalent: "")
+        let wm = NSMenu()
+        for s in allSensors {
+            let it = NSMenuItem(title: s.label, action: #selector(setWatch(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = s.key
+            if watchSensor == s.key { it.state = .on }
+            wm.addItem(it)
+        }
+        watchItem.submenu = wm
+        stm.addItem(watchItem)
+
+        let curveItem = NSMenuItem(title: "AUTO curve sensor", action: nil, keyEquivalent: "")
+        let cm = NSMenu()
+        for s in allSensors {
+            let it = NSMenuItem(title: s.label, action: #selector(setCurve(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = s.key
+            if curveSensor == s.key { it.state = .on }
+            cm.addItem(it)
+        }
+        curveItem.submenu = cm
+        stm.addItem(curveItem)
+
+        let menuSensItem = NSMenuItem(title: "Sensors in menu", action: nil, keyEquivalent: "")
+        let mm = NSMenu()
+        for s in allSensors {
+            let it = NSMenuItem(title: s.label, action: #selector(toggleMenuSensor(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = s.key
+            it.state = menuSensors.contains(s.key) ? .on : .off
+            mm.addItem(it)
+        }
+        menuSensItem.submenu = mm
+        stm.addItem(menuSensItem)
+
+        settingsItem.submenu = stm
+        m.addItem(settingsItem)
+
         m.addItem(NSMenuItem.separator())
         let aboutItem = NSMenuItem(title: "About FCM", action: #selector(openRepo), keyEquivalent: "")
         aboutItem.target = self
@@ -357,6 +521,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateIcon()
             refreshStatus()
         }
+    }
+
+    @objc func setUnit(_ sender: NSMenuItem) {
+        if let u = sender.representedObject as? String {
+            tempUnit = u
+            UserDefaults.standard.set(u, forKey: "tempUnit")
+            refreshStatus()
+        }
+    }
+
+    @objc func setWatch(_ sender: NSMenuItem) {
+        if let k = sender.representedObject as? String {
+            watchSensor = k
+            UserDefaults.standard.set(k, forKey: "watchSensor")
+            updateIcon()
+            refreshStatus()
+        }
+    }
+
+    @objc func setCurve(_ sender: NSMenuItem) {
+        if let k = sender.representedObject as? String {
+            curveSensor = k
+            UserDefaults.standard.set(k, forKey: "curveSensor")
+            assertFan()
+        }
+    }
+
+    @objc func toggleMenuSensor(_ sender: NSMenuItem) {
+        guard let k = sender.representedObject as? String else { return }
+        if let idx = menuSensors.firstIndex(of: k) {
+            menuSensors.remove(at: idx)
+            sender.state = .off
+        } else {
+            menuSensors.append(k)
+            sender.state = .on
+        }
+        UserDefaults.standard.set(menuSensors, forKey: "menuSensors")
+        refreshStatus()
     }
 
     @objc func setMax() {

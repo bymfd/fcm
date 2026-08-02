@@ -2,6 +2,7 @@
  * smc — AppleSMC (System Management Controller) okuma/yazma yardımcısı
  * Kullanım:
  *   smc list                    — tüm anahtarları listele
+ *   smc temps                   — sıcaklık sensörlerini listele (KEY=value)
  *   smc read <KEY>              — anahtarı oku ve değerini yazdır
  *   smc write <KEY> <VALUE>     — anahtara değer yaz (root gerekir)
  *
@@ -245,36 +246,90 @@ static int cmd_write(const char *key, const char *val) {
     return 0;
 }
 
-static int cmd_list(void) {
-    SMCKeyData_t in, out;
-    memset(&in, 0, sizeof(in));
-    memset(&out, 0, sizeof(out));
-    in.data8 = SMC_CMD_READ_KEYINFO;
-    if (smc_call(KERNEL_INDEX_SMC, &in, &out) != kIOReturnSuccess) {
-        fprintf(stderr, "smc: anahtar sayısı okunamadı\n");
-        return 1;
-    }
-    uint32_t count = out.keyInfo.dataSize;
-    printf("anahtar sayısı: %u\n", count);
-    for (uint32_t i = 0; i < count && i < 40; i++) {
+static int get_key_count(void) {
+    SMCKeyData_keyInfo_t info;
+    if (smc_read_info("#KEY", &info) != kIOReturnSuccess)
+        return -1;
+    SMCBytes_t data;
+    if (smc_read_data("#KEY", data, info.dataSize) != kIOReturnSuccess)
+        return -1;
+    return (int)decode_value(info.dataType, data, info.dataSize);
+}
+
+static int enumerate_keys(char keys[][5], int max_keys) {
+    int count = get_key_count();
+    if (count < 0)
+        return -1;
+    if (count > max_keys) count = max_keys;
+    for (int i = 0; i < count; i++) {
+        SMCKeyData_t in, out;
         memset(&in, 0, sizeof(in));
         memset(&out, 0, sizeof(out));
         in.data8 = SMC_CMD_READ_INDEX;
-        in.data32 = i;
+        in.data32 = (UInt32)i;
         if (smc_call(KERNEL_INDEX_SMC, &in, &out) != kIOReturnSuccess)
             continue;
-        char k[5];
-        k[0] = out.bytes[0]; k[1] = out.bytes[1]; k[2] = out.bytes[2]; k[3] = out.bytes[3]; k[4] = '\0';
+        uint32_t k = out.key;
+        keys[i][0] = (char)(k >> 24);
+        keys[i][1] = (char)(k >> 16);
+        keys[i][2] = (char)(k >> 8);
+        keys[i][3] = (char)(k);
+        keys[i][4] = '\0';
+    }
+    return count;
+}
+
+static int cmd_list(void) {
+    char keys[1024][5];
+    int count = enumerate_keys(keys, 1024);
+    if (count < 0) {
+        fprintf(stderr, "smc: anahtar sayısı okunamadı\n");
+        return 1;
+    }
+    printf("anahtar sayısı: %d\n", count);
+    for (int i = 0; i < count; i++) {
+        if (keys[i][0] == '\0') continue;
         SMCKeyData_keyInfo_t info;
-        if (smc_read_info(k, &info) != kIOReturnSuccess)
+        if (smc_read_info(keys[i], &info) != kIOReturnSuccess)
             continue;
         SMCBytes_t data;
-        if (smc_read_data(k, data, info.dataSize) != kIOReturnSuccess)
+        if (smc_read_data(keys[i], data, info.dataSize) != kIOReturnSuccess)
             continue;
-        printf("  %s type=%s size=%u val=%g\n", k, type_name(info.dataType),
+        printf("  %s type=%s size=%u val=%g\n", keys[i], type_name(info.dataType),
                info.dataSize, decode_value(info.dataType, data, info.dataSize));
     }
     return 0;
+}
+
+static int cmd_temps(void) {
+    char keys[1024][5];
+    int count = enumerate_keys(keys, 1024);
+    if (count < 0) {
+        fprintf(stderr, "smc: anahtar sayısı okunamadı\n");
+        return 1;
+    }
+    int found = 0;
+    for (int i = 0; i < count; i++) {
+        if (keys[i][0] == '\0') continue;
+        SMCKeyData_keyInfo_t info;
+        if (smc_read_info(keys[i], &info) != kIOReturnSuccess)
+            continue;
+        char t[5];
+        key_str(t, info.dataType);
+        if (strcmp(t, "sp78") != 0 || info.dataSize != 2)
+            continue;
+        if (keys[i][0] != 'T')
+            continue;
+        SMCBytes_t data;
+        if (smc_read_data(keys[i], data, info.dataSize) != kIOReturnSuccess)
+            continue;
+        double v = decode_value(info.dataType, data, info.dataSize);
+        if (v >= -50 && v <= 150 && v != 0) {
+            printf("%s=%g\n", keys[i], v);
+            found = 1;
+        }
+    }
+    return found ? 0 : 1;
 }
 
 static int cmd_dump(const char *key) {
@@ -309,7 +364,7 @@ static int cmd_dump(const char *key) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "kullanım: smc list | smc read <KEY> | smc write <KEY> <VALUE>\n");
+        fprintf(stderr, "kullanım: smc list | smc temps | smc read <KEY> | smc write <KEY> <VALUE>\n");
         return 1;
     }
     if (connect_smc() != 0) {
@@ -319,12 +374,14 @@ int main(int argc, char **argv) {
     const char *cmd = argv[1];
     if (strcmp(cmd, "list") == 0)
         return cmd_list();
+    if (strcmp(cmd, "temps") == 0)
+        return cmd_temps();
     if (strcmp(cmd, "read") == 0 && argc >= 3)
         return cmd_read(argc, argv);
     if (strcmp(cmd, "dump") == 0 && argc == 3)
         return cmd_dump(argv[2]);
     if (strcmp(cmd, "write") == 0 && argc == 4)
         return cmd_write(argv[2], argv[3]);
-    fprintf(stderr, "kullanım: smc list | smc read <KEY> | smc dump <KEY> | smc write <KEY> <VALUE>\n");
+    fprintf(stderr, "kullanım: smc list | smc temps | smc read <KEY> | smc dump <KEY> | smc write <KEY> <VALUE>\n");
     return 1;
 }
